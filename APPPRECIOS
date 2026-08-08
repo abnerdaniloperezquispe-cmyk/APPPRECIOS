@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockFerre — Consulta de Productos</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">🧰</span>
+    <div class="brand-text">
+      <strong>StockFerre</strong>
+      <small>Consulta de productos</small>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-view="escaner"><span>📷</span> Escanear</button>
+    <button class="nav-item" data-view="productos"><span>📦</span> Productos</button>
+    <button class="nav-item" data-view="categorias"><span>🗂️</span> Categorías</button>
+    <button class="nav-item" data-view="config"><span>⚙️</span> Configuración</button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <small id="sidebarProductCount">0 productos · Datos locales</small>
+  </div>
+</aside>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- ============ MAIN ============ -->
+<div class="main-wrap">
+  <header class="topbar">
+    <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menú">☰</button>
+    <h1 id="viewTitle">Escanear</h1>
+  </header>
+
+  <main class="content" id="content">
+
+    <!-- ---------- ESCÁNER (pantalla principal) ---------- -->
+    <section class="view active" id="view-escaner">
+      <div class="scan-manual">
+        <input type="text" id="manualCodeInput" class="input" placeholder="Escribe el código y presiona Enter (ej: HNV3445)" autocomplete="off">
+        <button class="btn btn-primary" id="btnManualCodeGo">Buscar</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h3>📷 Cámara</h3>
+          <button class="btn btn-sm btn-secondary" id="btnToggleCamera">Iniciar cámara</button>
+        </div>
+        <div class="panel-body">
+          <div id="ocr-reader" class="ocr-reader">
+            <video id="ocrVideo" autoplay playsinline muted></video>
+            <canvas id="ocrCanvas" style="display:none;"></canvas>
+            <div class="ocr-guide"></div>
+            <div class="ocr-status" id="ocrStatus">Toca "Iniciar cámara" para escanear</div>
+          </div>
+          <p class="hint">Acerca el código a ~20 cm del recuadro. Funciona con códigos numéricos (12345) o alfanuméricos (HNV3445, TR1223).</p>
+        </div>
+      </div>
+
+      <div id="scanResult"></div>
+    </section>
+
+    <!-- ---------- PRODUCTOS ---------- -->
+    <section class="view" id="view-productos">
+      <div class="toolbar">
+        <input type="text" id="prodSearch" class="input" placeholder="🔍 Buscar por nombre, código o marca...">
+        <select id="prodFilterCategoria" class="input select"><option value="">Todas las categorías</option></select>
+        <button class="btn btn-primary" id="btnNewProduct">+ Nuevo producto</button>
+        <button class="btn btn-secondary" id="btnImportProducts">📥 Importar CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="productsTable">
+          <thead>
+            <tr>
+              <th>Código</th><th>Descripción</th><th>Marca</th><th>Categoría</th>
+              <th>P. Compra</th><th>P. Marca</th><th>P. Venta</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- CATEGORÍAS ---------- -->
+    <section class="view" id="view-categorias">
+      <div class="toolbar">
+        <input type="text" id="newCategoryInput" class="input" placeholder="Nombre de nueva categoría...">
+        <button class="btn btn-primary" id="btnAddCategory">+ Agregar categoría</button>
+      </div>
+      <div class="cards-grid" id="categoriesGrid"></div>
+    </section>
+
+    <!-- ---------- CONFIGURACIÓN ---------- -->
+    <section class="view" id="view-config">
+      <div class="panels-grid">
+        <div class="panel">
+          <div class="panel-header"><h3>📂 Importar productos (CSV)</h3></div>
+          <div class="panel-body">
+            <p class="hint">Formato: <code>CODIGO,DESCRIPCION,MARCA,CATEGORIA,PRECIO COMPRA,PRECIO VENTA</code>. Acepta CSV separado por comas o por punto y coma (el que usa Excel en español).</p>
+            <button class="btn btn-secondary" id="btnImportProductsConfig">📥 Elegir archivo CSV</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h3>💾 Backup (JSON)</h3></div>
+          <div class="panel-body">
+            <p class="hint">Exporta o restaura una copia completa de tus productos y categorías.</p>
+            <div class="toolbar" style="margin-bottom:0;">
+              <button class="btn btn-primary" id="btnExportBackup">📤 Exportar backup</button>
+              <button class="btn btn-secondary" id="btnImportBackup">📥 Restaurar backup</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h3>⚠️ Zona de riesgo</h3></div>
+          <div class="panel-body">
+            <p class="hint">Esto borra todos los productos y categorías guardados en este dispositivo.</p>
+            <button class="btn btn-danger" id="btnFactoryReset">🗑️ Borrar todos los datos</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-backdrop" id="modalBackdrop"></div>
+
+<!-- Product Form Modal -->
+<div class="modal" id="modalProducto">
+  <div class="modal-header">
+    <h3 id="modalProductoTitle">Nuevo producto</h3>
+    <button class="modal-close" data-close-modal>✕</button>
+  </div>
+  <div class="modal-body">
+    <form id="formProducto" class="form-grid">
+      <input type="hidden" id="pId">
+      <label>Código *<input type="text" id="pCodigo" class="input" required></label>
+      <label>Descripción *<input type="text" id="pNombre" class="input" required></label>
+      <label>Marca<input type="text" id="pMarca" class="input"></label>
+      <label>Categoría<input type="text" id="pCategoria" class="input" list="categoriasList" placeholder="Elige o escribe una nueva"></label>
+      <datalist id="categoriasList"></datalist>
+      <label>Precio de compra<input type="number" id="pPrecioCompra" class="input" step="0.01" min="0"></label>
+      <label>Precio de marca<input type="number" id="pPrecioMarca" class="input" step="0.01" min="0"></label>
+      <label>Precio de venta<input type="number" id="pPrecioVenta" class="input" step="0.01" min="0"></label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Guardar</button>
+        <button type="button" class="btn btn-secondary" data-close-modal>Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm Modal (generic) -->
+<div class="modal modal-sm" id="modalConfirm">
+  <div class="modal-header">
+    <h3 id="confirmTitle">Confirmar</h3>
+    <button class="modal-close" data-close-modal>✕</button>
+  </div>
+  <div class="modal-body">
+    <p id="confirmMessage"></p>
+    <div class="form-actions">
+      <button class="btn btn-danger" id="confirmAcceptBtn">Confirmar</button>
+      <button class="btn btn-secondary" data-close-modal>Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="fileImportProducts" accept=".csv" hidden>
+<input type="file" id="fileImportBackup" accept=".json" hidden>
+
+<script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+<script src="app.js"></script>
+</body>
+</html>
+
+:root{
+  --primary:#2563eb;
+  --primary-dark:#1d4ed8;
+  --primary-light:#dbeafe;
+  --success:#16a34a;
+  --success-light:#dcfce7;
+  --danger:#dc2626;
+  --danger-light:#fee2e2;
+  --warning:#d97706;
+  --warning-light:#fef3c7;
+  --bg:#f3f4f6;
+  --surface:#ffffff;
+  --border:#e5e7eb;
+  --text:#111827;
+  --text-muted:#6b7280;
+  --sidebar-bg:#111827;
+  --sidebar-text:#d1d5db;
+  --sidebar-active:#1f2937;
+  --radius:10px;
+  --shadow:0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --sidebar-w:250px;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+}
+button{font-family:inherit;}
+input,select{font-family:inherit;}
+
+/* ---------- LAYOUT ---------- */
+.sidebar{
+  position:fixed; top:0; left:0; height:100vh; width:var(--sidebar-w);
+  background:var(--sidebar-bg); color:var(--sidebar-text);
+  display:flex; flex-direction:column; z-index:100;
+  transition:transform .25s ease;
+}
+.sidebar-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08);}
+.brand-icon{font-size:28px;}
+.brand-text{display:flex; flex-direction:column; line-height:1.2;}
+.brand-text strong{color:#fff; font-size:16px;}
+.brand-text small{color:#9ca3af; font-size:11px;}
+
+.sidebar-nav{flex:1; display:flex; flex-direction:column; padding:10px; gap:2px; overflow-y:auto;}
+.nav-item{
+  display:flex; align-items:center; gap:10px; text-align:left;
+  background:none; border:none; color:var(--sidebar-text);
+  padding:11px 12px; border-radius:8px; cursor:pointer; font-size:14px;
+}
+.nav-item span{font-size:16px; width:20px; text-align:center;}
+.nav-item:hover{background:rgba(255,255,255,.06); color:#fff;}
+.nav-item.active{background:var(--primary); color:#fff;}
+
+.sidebar-footer{padding:14px 18px; border-top:1px solid rgba(255,255,255,.08); color:#6b7280;}
+
+.sidebar-overlay{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:90;
+}
+
+.main-wrap{margin-left:var(--sidebar-w); min-height:100vh; display:flex; flex-direction:column;}
+
+.topbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:14px;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  padding:14px 22px;
+}
+.topbar h1{font-size:19px; margin:0; flex:1;}
+.hamburger{display:none; background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);}
+
+.content{padding:22px; flex:1;}
+
+/* Solo la vista de escáner se limita en ancho (se ve mejor angosta); el resto usa todo el espacio disponible */
+#view-escaner{max-width:480px;}
+
+.view{display:none;}
+.view.active{display:block; animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- CARDS ---------- */
+.cards-grid{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:14px; margin-bottom:20px;
+}
+.stat-card{
+  background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:16px; border-left:4px solid var(--primary);
+}
+.stat-card .stat-label{font-size:12.5px; color:var(--text-muted); font-weight:600;}
+.stat-card .stat-value{font-size:24px; font-weight:700; margin-top:6px; color:var(--text);}
+
+/* ---------- PANELS ---------- */
+.panels-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-bottom:16px;}
+.panel{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden;}
+.panel-header{padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.panel-header h3{margin:0; font-size:15px;}
+.panel-body{padding:16px 18px;}
+
+/* ---------- TOOLBAR / INPUTS ---------- */
+.toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px;}
+.toolbar .hint{margin:0; color:var(--text-muted); font-size:13px; display:flex; align-items:center; gap:6px;}
+.input{
+  padding:9px 12px; border:1px solid var(--border); border-radius:8px;
+  font-size:14px; background:var(--surface); color:var(--text);
+  flex:1; min-width:140px;
+}
+.input:focus{outline:2px solid var(--primary-light); border-color:var(--primary);}
+.select{cursor:pointer; flex:none;}
+
+/* ---------- BUTTONS ---------- */
+.btn{
+  padding:9px 16px; border:none; border-radius:8px; font-size:14px; font-weight:600;
+  cursor:pointer; transition:filter .15s ease; white-space:nowrap;
+}
+.btn:hover{filter:brightness(0.94);}
+.btn:focus-visible{outline:2px solid #111827; outline-offset:2px;}
+.btn-primary{background:var(--primary); color:#fff;}
+.btn-secondary{background:#e5e7eb; color:#111827;}
+.btn-danger{background:var(--danger); color:#fff;}
+.btn-success{background:var(--success); color:#fff;}
+.btn-sm{padding:6px 10px; font-size:12px; border-radius:6px;}
+.btn-icon{background:none; border:none; cursor:pointer; font-size:15px; padding:4px 6px; border-radius:6px;}
+.btn-icon:hover{background:var(--bg);}
+
+/* ---------- TABLE ---------- */
+.table-wrap{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto;}
+.table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:600px;}
+.table th{
+  text-align:left; padding:12px 14px; background:#f9fafb; color:var(--text-muted);
+  font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.02em;
+  border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.table td{padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:middle;}
+.table tbody tr:hover{background:#f9fafb;}
+.table tbody tr:last-child td{border-bottom:none;}
+.table .empty-row td{text-align:center; color:var(--text-muted); padding:26px;}
+
+.badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700;}
+.badge-muted{background:#e5e7eb; color:#374151;}
+
+/* ---------- MODALS ---------- */
+.modal-backdrop{display:none; position:fixed; inset:0; background:rgba(17,24,39,.55); z-index:200;}
+.modal{
+  display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:var(--surface); border-radius:14px; z-index:201; width:min(560px,92vw);
+  max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.modal.modal-sm{width:min(400px,92vw);}
+.modal.open, .modal-backdrop.open{display:block;}
+.modal-header{
+  display:flex; align-items:center; justify-content:space-between; padding:18px 20px;
+  border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface);
+}
+.modal-header h3{margin:0; font-size:16px;}
+.modal-close{background:none; border:none; font-size:18px; cursor:pointer; color:var(--text-muted); padding:4px 8px; border-radius:6px;}
+.modal-close:hover{background:var(--bg);}
+.modal-body{padding:20px;}
+
+.form-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.form-grid label{display:flex; flex-direction:column; gap:5px; font-size:13px; font-weight:600; color:#374151;}
+.form-grid .form-actions{grid-column:1/-1; display:flex; gap:10px; justify-content:flex-end; margin-top:6px;}
+
+/* ---------- SCANNER ---------- */
+.ocr-reader{
+  border-radius:10px; overflow:hidden; margin-bottom:10px;
+  height:260px; width:100%; max-width:340px; background:#000; position:relative;
+}
+.ocr-reader video{width:100%; height:100%; object-fit:cover; display:block;}
+.ocr-guide{
+  position:absolute; left:20%; right:20%; top:39%; bottom:39%;
+  border:2px dashed rgba(255,255,255,.9); border-radius:6px; pointer-events:none;
+}
+.ocr-status{
+  position:absolute; left:0; right:0; bottom:0; padding:8px 12px;
+  background:rgba(17,24,39,.72); color:#fff; font-size:12.5px; text-align:center;
+}
+.scan-manual{display:flex; gap:8px; margin-bottom:16px;}
+.scan-manual .input{flex:1;}
+.scan-result-card{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px;}
+.scan-result-card h4{margin:0 0 8px;}
+.scan-result-card .sr-row{display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px dashed var(--border);}
+.scan-result-card .sr-row:last-child{border-bottom:none;}
+.scan-not-found{background:var(--warning-light); color:#92400e; border-radius:10px; padding:14px; font-size:13.5px;}
+
+/* ---------- TOASTS ---------- */
+.toast-container{position:fixed; bottom:20px; right:20px; z-index:400; display:flex; flex-direction:column; gap:10px;}
+.toast{
+  background:#111827; color:#fff; padding:12px 18px; border-radius:8px; font-size:13.5px;
+  box-shadow:0 6px 16px rgba(0,0,0,.2); animation:toastIn .2s ease; max-width:320px;
+}
+.toast.success{background:var(--success);}
+.toast.error{background:var(--danger);}
+.toast.warning{background:var(--warning);}
+@keyframes toastIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- MISC ---------- */
+.hint{color:var(--text-muted); font-size:13px;}
+code{background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:12px;}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 900px){
+  .sidebar{transform:translateX(-100%);}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-overlay.open{display:block;}
+  .main-wrap{margin-left:0;}
+  .hamburger{display:block;}
+  .form-grid{grid-template-columns:1fr;}
+}
+@media (max-width: 560px){
+  .content{padding:14px;}
+  .topbar{padding:12px 14px;}
+  .topbar h1{font-size:16px;}
+  .cards-grid{grid-template-columns:1fr 1fr;}
+  .ocr-reader{height:220px; max-width:100%;}
+  .scan-manual{flex-direction:column;}
+}
+
+/* =========================================================================
+   STOCKFERRE — Consulta rápida de productos (100% frontend, offline-first)
+   Escaneas un código con la cámara (OCR) o lo escribes, y ves al instante:
+   código, descripción, marca, categoría, precio de compra y de venta.
+   Todo editable. Persistencia: LocalStorage. Sin Google Sheets.
+   ========================================================================= */
+
+const STORAGE_KEY = 'stockferre_catalogo_v1';
+
+let db = null;
+
+/* -------------------------------------------------------------------------
+   1. MODELO DE DATOS + PERSISTENCIA LOCAL
+   ------------------------------------------------------------------------- */
+
+function defaultDB(){
+  return {
+    productos: [],
+    categorias: [],
+    contador: { producto: 1 }
+  };
+}
+
+function loadDB(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      db = JSON.parse(raw);
+      db.productos = db.productos || [];
+      db.categorias = db.categorias || [];
+      db.contador = db.contador || { producto: 1 };
+      return;
+    }
+  }catch(e){ console.error('Error leyendo LocalStorage', e); }
+  db = defaultDB();
+  saveDB();
+}
+
+function saveDB(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  }catch(e){
+    console.error('Error guardando en LocalStorage', e);
+    toast('No se pudo guardar en el almacenamiento local (¿espacio lleno?)', 'error');
+  }
+}
+
+/* -------------------------------------------------------------------------
+   2. UTILIDADES
+   ------------------------------------------------------------------------- */
+
+function uid(){
+  const n = db.contador.producto++;
+  return 'p' + n + '_' + Date.now().toString(36);
+}
+
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function fmtMoney(n){
+  n = Number(n) || 0;
+  return 'Bs ' + n.toFixed(2);
+}
+
+function normalize(str){
+  return String(str||'').toUpperCase().trim();
+}
+
+function todayISO(){
+  return new Date().toISOString();
+}
+
+/* -------------------------------------------------------------------------
+   3. PRODUCTOS — CRUD
+   ------------------------------------------------------------------------- */
+
+function getProductoByCodigo(codigo){
+  const c = normalize(codigo);
+  return db.productos.find(p => normalize(p.codigo) === c) || null;
+}
+
+function getProductoById(id){
+  return db.productos.find(p => p.id === id) || null;
+}
+
+function upsertCategoria(nombre){
+  const n = String(nombre||'').trim();
+  if(!n) return;
+  const exists = db.categorias.some(c => normalize(c) === normalize(n));
+  if(!exists) db.categorias.push(n);
+}
+
+function saveProducto(data){
+  upsertCategoria(data.categoria);
+
+  if(data.id){
+    const p = getProductoById(data.id);
+    if(!p) return null;
+    p.codigo = data.codigo.trim();
+    p.nombre = data.nombre.trim();
+    p.marca = data.marca.trim();
+    p.categoria = data.categoria.trim();
+    p.precioCompra = parseFloat(data.precioCompra) || 0;
+    p.precioMarca = parseFloat(data.precioMarca) || 0;
+    p.precioVenta = parseFloat(data.precioVenta) || 0;
+    saveDB();
+    return p;
+  }else{
+    // Si ya existe un producto con ese código, actualízalo en vez de duplicar
+    const existing = getProductoByCodigo(data.codigo);
+    if(existing){
+      existing.nombre = data.nombre.trim();
+      existing.marca = data.marca.trim();
+      existing.categoria = data.categoria.trim();
+      existing.precioCompra = parseFloat(data.precioCompra) || 0;
+      existing.precioMarca = parseFloat(data.precioMarca) || 0;
+      existing.precioVenta = parseFloat(data.precioVenta) || 0;
+      saveDB();
+      return existing;
+    }
+    const p = {
+      id: uid(),
+      codigo: data.codigo.trim(),
+      nombre: data.nombre.trim(),
+      marca: data.marca.trim(),
+      categoria: data.categoria.trim(),
+      precioCompra: parseFloat(data.precioCompra) || 0,
+      precioMarca: parseFloat(data.precioMarca) || 0,
+      precioVenta: parseFloat(data.precioVenta) || 0,
+      fechaCreacion: todayISO()
+    };
+    db.productos.push(p);
+    saveDB();
+    return p;
+  }
+}
+
+function deleteProducto(id){
+  confirmDialog('Eliminar producto', '¿Seguro que quieres eliminar este producto? Esta acción no se puede deshacer.', ()=>{
+    db.productos = db.productos.filter(p => p.id !== id);
+    saveDB();
+    renderProductos();
+    renderCategorias();
+    toast('Producto eliminado', 'success');
+  });
+}
+
+/* -------------------------------------------------------------------------
+   4. VISTA: ESCÁNER / RESULTADO
+   ------------------------------------------------------------------------- */
+
+function renderScanResult(codigo){
+  const resultDiv = document.getElementById('scanResult');
+  const p = getProductoByCodigo(codigo);
+
+  if(!p){
+    resultDiv.innerHTML = `
+      <div class="scan-not-found">
+        ⚠️ No se encontró ningún producto con el código <strong>${escapeHtml(codigo)}</strong>.
+        <div style="margin-top:10px;">
+          <button class="btn btn-primary btn-sm" id="btnCreateFromScan">+ Crear producto con este código</button>
+        </div>
+      </div>`;
+    document.getElementById('btnCreateFromScan').addEventListener('click', ()=>{
+      openProductModal(null, codigo);
+    });
+    return;
+  }
+
+  resultDiv.innerHTML = `
+    <div class="scan-result-card">
+      <h4>📦 ${escapeHtml(p.nombre)}</h4>
+      <div class="sr-row"><span>Código</span><strong>${escapeHtml(p.codigo)}</strong></div>
+      <div class="sr-row"><span>Marca</span><strong>${escapeHtml(p.marca || '-')}</strong></div>
+      <div class="sr-row"><span>Categoría</span><strong>${escapeHtml(p.categoria || '-')}</strong></div>
+      <div class="sr-row"><span>Precio de compra</span><strong>${fmtMoney(p.precioCompra)}</strong></div>
+      <div class="sr-row"><span>Precio de marca</span><strong>${fmtMoney(p.precioMarca)}</strong></div>
+      <div class="sr-row"><span>Precio de venta</span><strong>${fmtMoney(p.precioVenta)}</strong></div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-secondary btn-sm" id="btnEditFromScan">✏️ Editar producto</button>
+      </div>
+    </div>`;
+  document.getElementById('btnEditFromScan').addEventListener('click', ()=>{
+    openProductModal(p);
+  });
+}
+
+function handleScannedCode(codigo){
+  codigo = String(codigo).trim();
+  if(!codigo) return;
+  renderScanResult(codigo);
+}
+
+/* -------------------------------------------------------------------------
+   5. VISTA: PRODUCTOS (tabla, búsqueda, filtro por categoría)
+   ------------------------------------------------------------------------- */
+
+function populateCategoryFilter(){
+  const sel = document.getElementById('prodFilterCategoria');
+  const current = sel.value;
+  const cats = getAllCategoryNames();
+  sel.innerHTML = '<option value="">Todas las categorías</option>' +
+    cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  if(cats.includes(current)) sel.value = current;
+}
+
+function populateCategoryDatalist(){
+  const dl = document.getElementById('categoriasList');
+  dl.innerHTML = getAllCategoryNames().map(c => `<option value="${escapeHtml(c)}">`).join('');
+}
+
+function getAllCategoryNames(){
+  const set = new Set(db.categorias.map(c => c.trim()).filter(Boolean));
+  db.productos.forEach(p => { if(p.categoria) set.add(p.categoria.trim()); });
+  return Array.from(set).sort((a,b)=> a.localeCompare(b, 'es'));
+}
+
+function renderProductos(){
+  populateCategoryFilter();
+  populateCategoryDatalist();
+
+  const search = normalize(document.getElementById('prodSearch').value);
+  const catFilter = document.getElementById('prodFilterCategoria').value;
+
+  let list = db.productos.slice();
+  if(catFilter){
+    list = list.filter(p => normalize(p.categoria) === normalize(catFilter));
+  }
+  if(search){
+    list = list.filter(p =>
+      normalize(p.nombre).includes(search) ||
+      normalize(p.codigo).includes(search) ||
+      normalize(p.marca).includes(search)
+    );
+  }
+  list.sort((a,b)=> a.nombre.localeCompare(b.nombre, 'es'));
+
+  const tbody = document.querySelector('#productsTable tbody');
+  if(list.length === 0){
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No hay productos que coincidan.</td></tr>`;
+  }else{
+    tbody.innerHTML = list.map(p => `
+      <tr>
+        <td><strong>${escapeHtml(p.codigo)}</strong></td>
+        <td>${escapeHtml(p.nombre)}</td>
+        <td>${escapeHtml(p.marca || '-')}</td>
+        <td>${p.categoria ? `<span class="badge badge-muted">${escapeHtml(p.categoria)}</span>` : '-'}</td>
+        <td>${fmtMoney(p.precioCompra)}</td>
+        <td>${fmtMoney(p.precioMarca)}</td>
+        <td>${fmtMoney(p.precioVenta)}</td>
+        <td>
+          <button class="btn-icon" title="Editar" data-edit-product="${p.id}">✏️</button>
+          <button class="btn-icon" title="Eliminar" data-delete-product="${p.id}">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('sidebarProductCount').textContent =
+    `${db.productos.length} producto${db.productos.length === 1 ? '' : 's'} · Datos locales`;
+}
+
+/* -------------------------------------------------------------------------
+   6. VISTA: CATEGORÍAS (botones para filtrar)
+   ------------------------------------------------------------------------- */
+
+function renderCategorias(){
+  const grid = document.getElementById('categoriesGrid');
+  const cats = getAllCategoryNames();
+
+  if(cats.length === 0){
+    grid.innerHTML = `<p class="hint">Aún no hay categorías. Agrega una arriba o crea productos con categoría.</p>`;
+    return;
+  }
+
+  grid.innerHTML = cats.map(c => {
+    const count = db.productos.filter(p => normalize(p.categoria) === normalize(c)).length;
+    return `
+      <button class="stat-card" style="text-align:left; cursor:pointer; border:none;" data-filter-category="${escapeHtml(c)}">
+        <div class="stat-label">${escapeHtml(c)}</div>
+        <div class="stat-value">${count}</div>
+      </button>`;
+  }).join('');
+
+  grid.querySelectorAll('[data-filter-category]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const cat = btn.dataset.filterCategory;
+      showView('productos');
+      document.getElementById('prodFilterCategoria').value = cat;
+      renderProductos();
+    });
+  });
+}
+
+/* -------------------------------------------------------------------------
+   7. MODAL DE PRODUCTO
+   ------------------------------------------------------------------------- */
+
+function openProductModal(producto, prefillCodigo){
+  const form = document.getElementById('formProducto');
+  form.reset();
+  populateCategoryDatalist();
+
+  if(producto){
+    document.getElementById('modalProductoTitle').textContent = 'Editar producto';
+    document.getElementById('pId').value = producto.id;
+    document.getElementById('pCodigo').value = producto.codigo;
+    document.getElementById('pNombre').value = producto.nombre;
+    document.getElementById('pMarca').value = producto.marca || '';
+    document.getElementById('pCategoria').value = producto.categoria || '';
+    document.getElementById('pPrecioCompra').value = producto.precioCompra || '';
+    document.getElementById('pPrecioMarca').value = producto.precioMarca || '';
+    document.getElementById('pPrecioVenta').value = producto.precioVenta || '';
+  }else{
+    document.getElementById('modalProductoTitle').textContent = 'Nuevo producto';
+    document.getElementById('pId').value = '';
+    if(prefillCodigo) document.getElementById('pCodigo').value = prefillCodigo;
+  }
+  openModal('modalProducto');
+}
+
+function handleProductSubmit(e){
+  e.preventDefault();
+  const data = {
+    id: document.getElementById('pId').value || null,
+    codigo: document.getElementById('pCodigo').value,
+    nombre: document.getElementById('pNombre').value,
+    marca: document.getElementById('pMarca').value,
+    categoria: document.getElementById('pCategoria').value,
+    precioCompra: document.getElementById('pPrecioCompra').value,
+    precioMarca: document.getElementById('pPrecioMarca').value,
+    precioVenta: document.getElementById('pPrecioVenta').value
+  };
+  if(!data.codigo.trim() || !data.nombre.trim()){
+    toast('Código y descripción son obligatorios', 'error');
+    return;
+  }
+  // Evitar duplicar código en otro producto distinto
+  const dup = getProductoByCodigo(data.codigo);
+  if(dup && dup.id !== data.id){
+    toast('Ya existe otro producto con ese código', 'error');
+    return;
+  }
+  const saved = saveProducto(data);
+  closeAllModals();
+  renderProductos();
+  renderCategorias();
+  toast('Producto guardado', 'success');
+  // Si venimos del escáner, refresca el resultado mostrado
+  if(saved) renderScanResult(saved.codigo);
+}
+
+/* -------------------------------------------------------------------------
+   8. IMPORTAR CSV DE PRODUCTOS
+   ------------------------------------------------------------------------- */
+
+// Excel en español guarda "CSV separado por comas" usando en realidad punto y
+// coma (porque usa la coma como separador decimal de los precios). Detectamos
+// el delimitador real mirando la primera línea del archivo.
+function detectDelimiter(text){
+  const firstLine = text.split(/\r\n|\r|\n/, 1)[0] || '';
+  const candidates = [',', ';', '\t'];
+  let best = ',', bestCount = 0;
+  candidates.forEach(d=>{
+    const count = firstLine.split(d).length - 1;
+    if(count > bestCount){ bestCount = count; best = d; }
+  });
+  return best;
+}
+
+// Parser CSV: soporta coma, punto y coma o tabulador como delimitador,
+// y campos entre comillas.
+function parseCSV(text, delimiter){
+  // Quita el BOM (marca de orden de bytes) que Excel agrega al guardar "CSV UTF-8"
+  text = text.replace(/^\uFEFF/, '');
+  text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  delimiter = delimiter || detectDelimiter(text);
+
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else{ inQuotes = false; }
+      }else{
+        field += ch;
+      }
+    }else{
+      if(ch === '"'){ inQuotes = true; }
+      else if(ch === delimiter){ row.push(field); field = ''; }
+      else if(ch === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+      else{ field += ch; }
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ''));
+}
+
+function normalizeHeader(h){
+  return String(h||'')
+    .trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita acentos
+    .replace(/\s+/g,' ');
+}
+
+function parsePrecio(raw){
+  if(raw === undefined || raw === null) return 0;
+  const cleaned = String(raw).trim().replace(/[^\d.,-]/g,'');
+  if(!cleaned) return 0;
+  // Si usa coma como decimal y no hay punto, conviértela
+  const normalized = (cleaned.includes(',') && !cleaned.includes('.'))
+    ? cleaned.replace(',', '.')
+    : cleaned.replace(/,/g,'');
+  const n = parseFloat(normalized);
+  return isNaN(n) ? 0 : n;
+}
+
+function importProductsCSV(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const rows = parseCSV(e.target.result);
+      if(rows.length < 2){
+        toast('El archivo CSV no tiene datos', 'error');
+        return;
+      }
+      const headers = rows[0].map(normalizeHeader);
+      const idx = {
+        codigo: headers.indexOf('CODIGO'),
+        nombre: headers.findIndex(h => h.includes('DESCRIPCION') || h === 'NOMBRE'),
+        marca: headers.indexOf('MARCA'),
+        categoria: headers.indexOf('CATEGORIA'),
+        // Acepta "PRECIO COMPRA", "PRECIO DE COMPRA", "PRECIO_COMPRA", etc.
+        precioCompra: headers.findIndex(h => h.includes('PRECIO') && h.includes('COMPRA')),
+        precioMarca: headers.findIndex(h => h.includes('PRECIO') && h.includes('MARCA')),
+        precioVenta: headers.findIndex(h => h.includes('PRECIO') && h.includes('VENTA'))
+      };
+      if(idx.codigo === -1 || idx.nombre === -1){
+        toast('El CSV debe tener al menos columnas CODIGO y DESCRIPCION', 'error');
+        return;
+      }
+      if(idx.precioCompra === -1 || idx.precioVenta === -1){
+        toast('No se encontraron las columnas de precio (se importarán los productos, pero revisa los precios manualmente)', 'warning');
+      }
+
+      let creados = 0, actualizados = 0;
+      for(let i = 1; i < rows.length; i++){
+        const r = rows[i];
+        const codigo = String(r[idx.codigo] || '').trim();
+        if(!codigo) continue;
+        const nombre = String(r[idx.nombre] || '').trim();
+        const marca = idx.marca > -1 ? String(r[idx.marca] || '').trim() : '';
+        const categoria = idx.categoria > -1 ? String(r[idx.categoria] || '').trim() : '';
+        const precioCompra = idx.precioCompra > -1 ? parsePrecio(r[idx.precioCompra]) : 0;
+        const precioMarca = idx.precioMarca > -1 ? parsePrecio(r[idx.precioMarca]) : 0;
+        const precioVenta = idx.precioVenta > -1 ? parsePrecio(r[idx.precioVenta]) : 0;
+
+        if(categoria) upsertCategoria(categoria);
+
+        const existing = getProductoByCodigo(codigo);
+        if(existing){
+          existing.nombre = nombre || existing.nombre;
+          existing.marca = marca || existing.marca;
+          existing.categoria = categoria || existing.categoria;
+          existing.precioCompra = precioCompra || existing.precioCompra;
+          existing.precioMarca = precioMarca || existing.precioMarca;
+          existing.precioVenta = precioVenta || existing.precioVenta;
+          actualizados++;
+        }else{
+          db.productos.push({
+            id: uid(),
+            codigo, nombre, marca, categoria,
+            precioCompra, precioMarca, precioVenta,
+            fechaCreacion: todayISO()
+          });
+          creados++;
+        }
+      }
+      saveDB();
+      renderProductos();
+      renderCategorias();
+      toast(`Importación completa: ${creados} nuevos, ${actualizados} actualizados`, 'success');
+    }catch(err){
+      console.error(err);
+      toast('No se pudo leer el archivo CSV. Verifica el formato.', 'error');
+    }
+  };
+  reader.onerror = ()=> toast('Error al leer el archivo', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+/* -------------------------------------------------------------------------
+   9. BACKUP / RESTAURAR (JSON)
+   ------------------------------------------------------------------------- */
+
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `stockferre_backup_${todayISO().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Backup exportado', 'success');
+}
+
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const parsed = JSON.parse(e.target.result);
+      if(!parsed || !Array.isArray(parsed.productos)){
+        toast('El archivo no tiene un formato de backup válido', 'error');
+        return;
+      }
+      confirmDialog('Restaurar backup', 'Esto reemplazará todos los productos y categorías actuales. ¿Continuar?', ()=>{
+        db = {
+          productos: parsed.productos || [],
+          categorias: parsed.categorias || [],
+          contador: parsed.contador || { producto: (parsed.productos.length || 0) + 1 }
+        };
+        saveDB();
+        renderProductos();
+        renderCategorias();
+        toast('Backup restaurado correctamente', 'success');
+      });
+    }catch(err){
+      console.error(err);
+      toast('No se pudo leer el archivo de backup', 'error');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function factoryReset(){
+  confirmDialog('Borrar todos los datos', 'Esto eliminará permanentemente todos los productos y categorías guardados en este dispositivo. ¿Estás seguro?', ()=>{
+    db = defaultDB();
+    saveDB();
+    renderProductos();
+    renderCategorias();
+    document.getElementById('scanResult').innerHTML = '';
+    toast('Datos borrados', 'success');
+  });
+}
+
+/* -------------------------------------------------------------------------
+   10. NAVEGACIÓN / VISTAS
+   ------------------------------------------------------------------------- */
+
+const VIEW_TITLES = {
+  escaner: 'Escanear',
+  productos: 'Productos',
+  categorias: 'Categorías',
+  config: 'Configuración'
+};
+
+function showView(name){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.view === name);
+  });
+  document.getElementById('viewTitle').textContent = VIEW_TITLES[name] || '';
+  closeSidebarMobile();
+
+  if(name === 'productos') renderProductos();
+  if(name === 'categorias') renderCategorias();
+  if(name !== 'escaner') stopOcrScanner();
+}
+
+function closeSidebarMobile(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+/* -------------------------------------------------------------------------
+   11. MODALES / TOASTS / CONFIRMACIÓN
+   ------------------------------------------------------------------------- */
+
+function openModal(id){
+  document.getElementById('modalBackdrop').classList.add('open');
+  document.getElementById(id).classList.add('open');
+}
+function closeAllModals(){
+  document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+  document.getElementById('modalBackdrop').classList.remove('open');
+}
+
+let confirmCallback = null;
+function confirmDialog(title, message, onAccept){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+  confirmCallback = onAccept;
+  openModal('modalConfirm');
+}
+
+function toast(message, type){
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(()=>{ el.remove(); }, 3200);
+}
+
+/* -------------------------------------------------------------------------
+   12. ESCÁNER DE TEXTO / OCR (Tesseract.js)
+   Lee códigos numéricos (12345) y alfanuméricos (HNV3445, TR1223, TR23-23)
+   impresos en etiquetas, en tiempo real, sin tomar fotos.
+   ------------------------------------------------------------------------- */
+
+// Palabras que suelen aparecer junto al código en las etiquetas y deben ignorarse
+const OCR_IGNORE_WORDS = [
+  'NUEVO','NEW','OFERTA','DESCUENTO','EXCELENTE','EXC','IMPORTADO','IMPORT',
+  'PROMO','PROMOCION','CALIDAD','GARANTIA','ORIGINAL','SALE','STOCK','PRECIO',
+  'FERRETERIA','BOLIVIA','MARCA','MODELO','PROD','PRODUCTO'
+];
+
+// Numérico (12345) o alfanumérico (2-4 letras + 2-5 números, guion opcional)
+const OCR_CODE_PATTERN = /^(?:[0-9]{3,8}|[A-Z]{2,4}[0-9]{2,5}(-[0-9]{2,4})?)$/;
+
+const OCR_INTERVAL_MS = 600;
+
+let ocrWorker = null;
+let ocrStream = null;
+let ocrTimer = null;
+let ocrBusy = false;
+let ocrActive = false;
+
+function cleanOcrToken(raw){
+  return raw.toUpperCase().replace(/[^A-Z0-9-]/g,'').trim();
+}
+
+function extractCandidateCodes(text){
+  if(!text) return [];
+  const tokens = text.split(/[\s\n\r,;:|]+/).map(cleanOcrToken).filter(Boolean);
+  const seen = new Set();
+  const candidates = [];
+  tokens.forEach(tok=>{
+    if(seen.has(tok)) return;
+    seen.add(tok);
+    if(OCR_IGNORE_WORDS.includes(tok)) return;
+    if(OCR_CODE_PATTERN.test(tok)) candidates.push(tok);
+  });
+  return candidates;
+}
+
+function pickBestCandidate(candidates){
+  if(candidates.length === 0) return null;
+  const existing = candidates.find(c => getProductoByCodigo(c));
+  if(existing) return existing;
+  return candidates[0];
+}
+
+function setOcrStatus(msg){
+  const el = document.getElementById('ocrStatus');
+  if(el) el.textContent = msg;
+}
+
+async function startOcrScanner(){
+  if(typeof Tesseract === 'undefined'){
+    setOcrStatus('No se pudo cargar Tesseract.js. Verifica tu conexión a internet o usa la búsqueda manual.');
+    return;
+  }
+
+  const videoEl = document.getElementById('ocrVideo');
+  const toggleBtn = document.getElementById('btnToggleCamera');
+
+  try{
+    setOcrStatus('Iniciando cámara...');
+    ocrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }
+    });
+    videoEl.srcObject = ocrStream;
+    await videoEl.play();
+  }catch(err){
+    console.warn(err);
+    setOcrStatus('No se pudo acceder a la cámara. Verifica los permisos o usa la búsqueda manual.');
+    return;
+  }
+
+  try{
+    setOcrStatus('Preparando el lector de texto...');
+    ocrWorker = await Tesseract.createWorker('eng');
+    await ocrWorker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-',
+      tessedit_pageseg_mode: '7'
+    });
+  }catch(err){
+    console.warn(err);
+    setOcrStatus('No se pudo iniciar el motor de lectura de texto.');
+    return;
+  }
+
+  ocrActive = true;
+  if(toggleBtn) toggleBtn.textContent = 'Detener cámara';
+  setOcrStatus('🔎 Buscando texto...');
+  scheduleNextOcrCapture();
+}
+
+function scheduleNextOcrCapture(){
+  if(!ocrActive) return;
+  ocrTimer = setTimeout(runOcrCapture, OCR_INTERVAL_MS);
+}
+
+async function runOcrCapture(){
+  if(!ocrActive || ocrBusy) return;
+  const videoEl = document.getElementById('ocrVideo');
+  const canvasEl = document.getElementById('ocrCanvas');
+  if(!videoEl || !videoEl.videoWidth){ scheduleNextOcrCapture(); return; }
+
+  ocrBusy = true;
+  try{
+    // Recorta una franja pequeña y central para enfocar la etiqueta (~20cm) y acelerar el OCR
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    const cropW = vw * 0.6, cropH = vh * 0.22;
+    const cropX = (vw - cropW) / 2, cropY = (vh - cropH) / 2;
+    canvasEl.width = cropW; canvasEl.height = cropH;
+    const ctx = canvasEl.getContext('2d');
+    ctx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    setOcrStatus('🔎 Analizando etiqueta...');
+    const { data: { text } } = await ocrWorker.recognize(canvasEl);
+    const candidates = extractCandidateCodes(text);
+    const best = pickBestCandidate(candidates);
+
+    if(best){
+      const now = Date.now();
+      if(!(window.__lastOcrCode === best && now - (window.__lastOcrTime||0) < 3000)){
+        window.__lastOcrCode = best;
+        window.__lastOcrTime = now;
+        handleScannedCode(best);
+      }
+    }
+    if(ocrActive) setOcrStatus('🔎 Buscando texto...');
+  }catch(err){
+    console.warn('Error de OCR', err);
+  }finally{
+    ocrBusy = false;
+    scheduleNextOcrCapture();
+  }
+}
+
+function stopOcrScanner(){
+  ocrActive = false;
+  if(ocrTimer){ clearTimeout(ocrTimer); ocrTimer = null; }
+  if(ocrStream){
+    ocrStream.getTracks().forEach(t => t.stop());
+    ocrStream = null;
+  }
+  const videoEl = document.getElementById('ocrVideo');
+  if(videoEl) videoEl.srcObject = null;
+  if(ocrWorker){
+    const w = ocrWorker;
+    ocrWorker = null;
+    w.terminate().catch(()=>{});
+  }
+  const toggleBtn = document.getElementById('btnToggleCamera');
+  if(toggleBtn) toggleBtn.textContent = 'Iniciar cámara';
+  setOcrStatus('Toca "Iniciar cámara" para escanear');
+}
+
+function toggleCamera(){
+  if(ocrActive) stopOcrScanner();
+  else startOcrScanner();
+}
+
+/* -------------------------------------------------------------------------
+   13. EVENTOS / INICIALIZACIÓN
+   ------------------------------------------------------------------------- */
+
+function setupEventListeners(){
+  // Navegación
+  document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
+    btn.addEventListener('click', ()=> showView(btn.dataset.view));
+  });
+
+  // Sidebar móvil
+  document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebarOverlay').classList.add('open');
+  });
+  document.getElementById('sidebarOverlay').addEventListener('click', closeSidebarMobile);
+
+  // Cerrar modales
+  document.querySelectorAll('[data-close-modal]').forEach(btn=>{
+    btn.addEventListener('click', closeAllModals);
+  });
+  document.getElementById('modalBackdrop').addEventListener('click', closeAllModals);
+
+  // Confirm modal
+  document.getElementById('confirmAcceptBtn').addEventListener('click', ()=>{
+    if(confirmCallback) confirmCallback();
+    confirmCallback = null;
+    closeAllModals();
+  });
+
+  // Escáner
+  document.getElementById('btnToggleCamera').addEventListener('click', toggleCamera);
+  document.getElementById('btnManualCodeGo').addEventListener('click', ()=>{
+    const val = document.getElementById('manualCodeInput').value.trim();
+    if(val) handleScannedCode(val);
+  });
+  document.getElementById('manualCodeInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const val = e.target.value.trim();
+      if(val) handleScannedCode(val);
+    }
+  });
+
+  // Productos
+  document.getElementById('btnNewProduct').addEventListener('click', ()=> openProductModal());
+  document.getElementById('formProducto').addEventListener('submit', handleProductSubmit);
+  document.getElementById('prodSearch').addEventListener('input', renderProductos);
+  document.getElementById('prodFilterCategoria').addEventListener('change', renderProductos);
+  document.querySelector('#productsTable tbody').addEventListener('click', (e)=>{
+    const editId = e.target.closest('[data-edit-product]')?.dataset.editProduct;
+    const delId = e.target.closest('[data-delete-product]')?.dataset.deleteProduct;
+    if(editId) openProductModal(getProductoById(editId));
+    if(delId) deleteProducto(delId);
+  });
+
+  // Categorías
+  document.getElementById('btnAddCategory').addEventListener('click', ()=>{
+    const input = document.getElementById('newCategoryInput');
+    const val = input.value.trim();
+    if(!val){ toast('Escribe un nombre de categoría', 'error'); return; }
+    upsertCategoria(val);
+    saveDB();
+    input.value = '';
+    renderCategorias();
+    toast('Categoría agregada', 'success');
+  });
+
+  // Importaciones CSV (desde Productos y desde Configuración)
+  document.getElementById('btnImportProducts').addEventListener('click', ()=> document.getElementById('fileImportProducts').click());
+  document.getElementById('btnImportProductsConfig').addEventListener('click', ()=> document.getElementById('fileImportProducts').click());
+  document.getElementById('fileImportProducts').addEventListener('change', (e)=>{
+    if(e.target.files[0]) importProductsCSV(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  // Backup / Configuración
+  document.getElementById('btnExportBackup').addEventListener('click', exportBackup);
+  document.getElementById('btnImportBackup').addEventListener('click', ()=> document.getElementById('fileImportBackup').click());
+  document.getElementById('fileImportBackup').addEventListener('change', (e)=>{
+    if(e.target.files[0]) importBackup(e.target.files[0]);
+    e.target.value = '';
+  });
+  document.getElementById('btnFactoryReset').addEventListener('click', factoryReset);
+}
+
+function init(){
+  loadDB();
+  setupEventListeners();
+  showView('escaner');
+}
+
+document.addEventListener('DOMContentLoaded', init);
